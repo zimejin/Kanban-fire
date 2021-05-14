@@ -19,8 +19,15 @@ import { Task } from './task';
 
 @Component({
   selector: 'app-task',
-  templateUrl: './task.component.html',
-  styleUrls: ['./task.component.css']
+  template: `
+    <mat-card class="item" (dblclick)="edit.emit(task)">
+      <h2>{{ task?.title }}</h2>
+      <p>
+        {{ task?.description }}
+      </p>
+    </mat-card>
+  `,
+  styleUrls: ['./task.component.css'],
 })
 export class TaskComponent {
   @Input() task: Task;

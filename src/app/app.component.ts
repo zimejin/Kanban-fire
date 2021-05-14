@@ -18,17 +18,107 @@ import { Component } from '@angular/core';
 import { Task } from './task/task';
 import { CdkDragDrop, transferArrayItem } from '@angular/cdk/drag-drop';
 import { MatDialog } from '@angular/material/dialog';
-import { TaskDialogResult, TaskDialogComponent } from './task-dialog/task-dialog.component';
+import {
+  TaskDialogResult,
+  TaskDialogComponent,
+} from './task-dialog/task-dialog.component';
 import { AngularFirestore } from '@angular/fire/firestore';
 
 @Component({
   selector: 'app-root',
-  templateUrl: './app.component.html',
+  template: `
+    <mat-toolbar color="primary">
+      <mat-icon>local_fire_department</mat-icon>
+      <span>Kanban Fire</span>
+    </mat-toolbar>
+
+    <div class="content-wrapper">
+      <button (click)="newTask()" mat-button>
+        <mat-icon>add</mat-icon> Add Task
+      </button>
+
+      <div class="container-wrapper">
+        <div class="container">
+          <h2>Backlog</h2>
+
+          <mat-card
+            cdkDropList
+            id="todo"
+            #todoList="cdkDropList"
+            [cdkDropListData]="todo | async"
+            [cdkDropListConnectedTo]="[doneList, inProgressList]"
+            (cdkDropListDropped)="drop($event)"
+            class="list"
+          >
+            <p class="empty-label" *ngIf="(todo | async)?.length === 0">
+              Empty list
+            </p>
+            <app-task
+              (edit)="editTask('todo', $event)"
+              *ngFor="let task of todo | async"
+              cdkDrag
+              [task]="task"
+            ></app-task>
+          </mat-card>
+        </div>
+
+        <div class="container">
+          <h2>In progress</h2>
+
+          <mat-card
+            cdkDropList
+            id="inProgress"
+            #inProgressList="cdkDropList"
+            [cdkDropListData]="inProgress | async"
+            [cdkDropListConnectedTo]="[todoList, doneList]"
+            (cdkDropListDropped)="drop($event)"
+            class="list"
+          >
+            <p class="empty-label" *ngIf="(inProgress | async)?.length === 0">
+              Empty list
+            </p>
+            <app-task
+              (edit)="editTask('inProgress', $event)"
+              *ngFor="let task of inProgress | async"
+              cdkDrag
+              [task]="task"
+            ></app-task>
+          </mat-card>
+        </div>
+
+        <div class="container">
+          <h2>Done</h2>
+
+          <mat-card
+            cdkDropList
+            id="done"
+            #doneList="cdkDropList"
+            [cdkDropListData]="done | async"
+            [cdkDropListConnectedTo]="[todoList, inProgressList]"
+            (cdkDropListDropped)="drop($event)"
+            class="list"
+          >
+            <p class="empty-label" *ngIf="(done | async)?.length === 0">
+              Empty list
+            </p>
+            <app-task
+              (edit)="editTask('done', $event)"
+              *ngFor="let task of done | async"
+              cdkDrag
+              [task]="task"
+            ></app-task>
+          </mat-card>
+        </div>
+      </div>
+    </div>
+  `,
   styleUrls: ['./app.component.css'],
 })
 export class AppComponent {
   todo = this.store.collection('todo').valueChanges({ idField: 'id' });
-  inProgress = this.store.collection('inProgress').valueChanges({ idField: 'id' });
+  inProgress = this.store
+    .collection('inProgress')
+    .valueChanges({ idField: 'id' });
   done = this.store.collection('done').valueChanges({ idField: 'id' });
 
   constructor(private dialog: MatDialog, private store: AngularFirestore) {}
@@ -42,7 +132,9 @@ export class AppComponent {
     });
     dialogRef
       .afterClosed()
-      .subscribe((result: TaskDialogResult) => this.store.collection('todo').add(result.task));
+      .subscribe((result: TaskDialogResult) =>
+        this.store.collection('todo').add(result.task)
+      );
   }
 
   editTask(list: 'done' | 'todo' | 'inProgress', task: Task): void {
@@ -63,22 +155,30 @@ export class AppComponent {
   }
 
   drop(event: CdkDragDrop<Task[]>): void {
-    if (event.previousContainer === event.container) {
-      return;
+    try {
+      console.log('CDK drop event ', event);
+      if (event.previousContainer === event.container) {
+        return;
+      }
+      const item = event.previousContainer.data[event.previousIndex];
+      this.store.firestore.runTransaction(() => {
+        const promise = Promise.all([
+          this.store
+            .collection(event.previousContainer.id)
+            .doc(item.id)
+            .delete(),
+          this.store.collection(event.container.id).add(item),
+        ]);
+        return promise;
+      });
+      transferArrayItem(
+        event.previousContainer.data,
+        event.container.data,
+        event.previousIndex,
+        event.currentIndex
+      );
+    } catch (error) {
+      console.log('CDK drop error occured:- ', error);
     }
-    const item = event.previousContainer.data[event.previousIndex];
-    this.store.firestore.runTransaction(() => {
-      const promise = Promise.all([
-        this.store.collection(event.previousContainer.id).doc(item.id).delete(),
-        this.store.collection(event.container.id).add(item),
-      ]);
-      return promise;
-    });
-    transferArrayItem(
-      event.previousContainer.data,
-      event.container.data,
-      event.previousIndex,
-      event.currentIndex
-    );
   }
 }
